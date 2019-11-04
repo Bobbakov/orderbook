@@ -61,7 +61,7 @@ class order():
     activeSellOrders = {}
     
     # Initialize order
-    def __init__(self, market, trader, side, price, quantity, mute = False):
+    def __init__(self, market, trader, side, price, quantity, mute_transactions = True):
         self.id = next(order.counter)
         self.datetime = datetime.now()
         self.market = market
@@ -104,7 +104,7 @@ class order():
                             # Register transaction
                             transaction(self, bestOffer, market, transactionPrice, transactionQuantity)
                             
-                            if not mute:
+                            if not mute_transactions:
                                 transactionDescription(self, bestOffer, market, transactionPrice, transactionQuantity)
                             
                             # Remove offer from orderbook
@@ -119,7 +119,7 @@ class order():
                             # Register transaction
                             transaction(self, bestOffer, market, transactionPrice, transactionQuantity)
                             
-                            if not mute:
+                            if not mute_transactions:
                                 transactionDescription(self, bestOffer, market, transactionPrice, transactionQuantity)
                             
                             # Remove offer from orderbook
@@ -134,7 +134,7 @@ class order():
                             # Register transaction
                             transaction(self, bestOffer, market, transactionPrice, transactionQuantity)
                             
-                            if not mute:
+                            if not mute_transactions:
                                 transactionDescription(self, bestOffer, market, transactionPrice, transactionQuantity)
                             
                             # Reduce offer
@@ -178,7 +178,7 @@ class order():
                             # Register transaction
                             transaction(bestBid, self, market, transactionPrice, transactionQuantity)
                             
-                            if not mute:
+                            if not mute_transactions:
                                 transactionDescription(bestBid, self, market, transactionPrice, transactionQuantity)
                             
                             # Remove bid from orderbook
@@ -192,7 +192,7 @@ class order():
                             # Register transaction
                             transaction(bestBid, self, market, transactionPrice, transactionQuantity)
                             
-                            if not mute:
+                            if not mute_transactions:
                                 transactionDescription(bestBid, self, market, transactionPrice, transactionQuantity)
                             
                             # Remove offer from orderbook
@@ -208,7 +208,7 @@ class order():
                             # Register transaction
                             transaction(bestBid, self, market, transactionPrice, transactionQuantity)
                             
-                            if not mute:
+                            if not mute_transactions:
                                 transactionDescription(bestBid, self, market, transactionPrice, transactionQuantity)
                             
                             # Reduce offer
@@ -301,10 +301,99 @@ def showOrderbookPlt2():
     plt.barh(list(sellOrdersAgg.keys()), list(sellOrdersAgg.values()), align = "center", color = "red")
         
     plt.show()
+    
+def getLastPriceElse(market, p0):
+    if market.id in transaction.history.keys():
+        p = transaction.history[market.id][-1].price 
+    else:
+        p = p0             
+    return p
+
+###############################################################################
+# ALGORITHMIC TRADING STRATEGIES
+###############################################################################        
+# FROM HERE FOLLOW ALGORITHMIC STRATEGIES
+def priceFromUniformDistribution(market, name, mute_transactions = True):
+    side = choice(["Buy", "Sell"])
+    price = randint(1, 100)
+    quantity = randint(1, 10)
+    
+    order(market, name, side, price, quantity, mute_transactions = mute_transactions)
+    
+from numpy.random import normal    
+def priceFromNormalDistribution(market, name, p0, stdRange = 0.05, mute_transactions = True):
+    side = choice(["Buy", "Sell"])
+    
+    p0 = p0 + normal() * (stdRange * p0)
+    p0 = int(p0)
+    
+    if p0 < 0:
+        p0 = 1
+        
+    quantity = randint(1, 10)
+    
+    order(market, name, side, p0, quantity, mute_transactions = mute_transactions)
+    
+    
+def alwaysBestBid(market, name, mute_transactions = True):
+    quantity = randint(1, 10)
+    # If there are active buy orders --> improve best bid
+    if not not order.activeBuyOrders[market.id]:
+        buyOrders = sorted(order.activeBuyOrders[market.id], key = operator.attrgetter("price"), reverse = True)
+        bestBid = buyOrders[0]
+        
+        # If trader is not best bid --> improve best bid
+        if not bestBid.trader == name:
+            order(market, name, "Buy", bestBid.price + 1, quantity, mute_transactions)    
+        else:
+            pass
+    # Else --> create best bid    
+    else:
+        order(market, name, "Buy", 1, quantity, mute_transactions)
+        
+def alwaysBestOffer(market, name, mute_transactions = True):    
+    quantity = randint(1, 10)
+    # If there are active sell orders --> improve best offer
+    if not not order.activeSellOrders[market.id]:
+        sellOrders = sorted(order.activeSellOrders[market.id], key = operator.attrgetter("price"))
+        bestOffer = sellOrders[0]
+        
+        # If trader is not best bid --> improve best bid
+        if not bestOffer.trader == name:
+            order(market, name, "Sell", bestOffer.price - 1, quantity, mute_transactions)    
+        else:
+            pass
+    # Else --> create best bid    
+    else:
+        order(market, name, "Sell", 100, quantity, mute_transactions)        
+        
+def priceFollowing(market, name, mute_transactions = True):
+    # If transaction --> check for trend
+    if len(transaction.history[market.id]) >= 2:
+        hist = transaction.history[market.id]
+        lastPrice = hist[-1].price
+        secondLastPrice = hist[-2].price
+        quantity = randint(1, 10)
+        
+        # If price up --> buy best offer
+        if lastPrice > secondLastPrice:
+            if not not order.activeSellOrders[market.id]:
+                #sellOrders = sorted(order.activeSellOrders, key = operator.attrgetter("price"))
+                #bestOffer = sellOrders[0]
+                order(market, name, "Buy", 100, quantity, mute_transactions)
+        
+    # If price down --> hit best bid    
+        if lastPrice < secondLastPrice:
+            if not not order.activeBuyOrders[market.id]:
+                #buyOrders = sorted(order.activeBuyOrders, key = operator.attrgetter("price"), reverse = True)
+                #bestBid = buyOrders[0]
+                order(market, name, "Sell", 1, quantity, mute_transactions)        
 
 ###############################################################################
 # MARKET
 ############################################################################### 
+# from numpy.random import normal
+
 # Generate n random Orders    
 class market():
     counter = itertools.count()
@@ -316,37 +405,44 @@ class market():
         return "{}".format(self.id)    
     
     # IF WE GENERATE ORDERS --> WE START THE MARKET  
-    def orderGenerator(self, n, sleeptime = 0, mute = True, mute2 = True, display = "raw", 
-                   dime_algo = False, pf_algo = False):
+    def orderGenerator(self, n, sleeptime = 0, dime_algo = False, pf_algo = False, mute_orderbook = True, mute_transactions = True):
         c = 1
         for o in range(int(n)):
-            if not mute:
+            
+            # ACTION RANDOM AGENT
+            
+            priceFromUniformDistribution(self, "Bert", mute_transactions = mute_transactions) 
+            # priceFromNormalDistribution(self, "John", getLastPriceElse(self, 100), stdRange = 0.5)
+            if not mute_orderbook:
                 print("Iteration: {}".format(c))
+                print("Action random agent: ")
+                market.showOrderbook()
+                
+            # ACTION PRICE FOLLOWING
+            if pf_algo:
+                priceFollowing(self, "follow", mute_transactions = mute_transactions)
+                
+                if not mute_orderbook:
+                    print("Action price follower: ")
+                    market.showOrderbook()
+            
+            # ACTION MARKET MAKER                   
+            if dime_algo:
+                alwaysBestBid(self, "bestBidder", mute_transactions = mute_transactions)  
+                alwaysBestOffer(self, "bestOffer", mute_transactions = mute_transactions)
+                
+                if not mute_orderbook:
+                    print("Action market maker: ")
+                    market.showOrderbook()    
             
             c+= 1
-            # ACTION AGENT 1
-            side = choice(["Buy", "Sell"])
-            price = randint(0, 100)
-            quantity = randint(1, 10)
-            market = self
-            order(market, "Bert", side, price, quantity, mute = mute2)
-            
-            # ACTION AGENT 2                    
-            if dime_algo:
-                alwaysBestBid("bestBidder")  
-                alwaysBestOffer("bestOffer")
-        
-            
-            # ACTION AGENT 3
-            if pf_algo:
-                priceFollowing("Follow")
-                   
             time.sleep(float(sleeptime))       
     
     # Show orderbook            
     def showOrderbook(self):
         widthOrderbook = len("93       0       Bert    Buy     33      5")
         print(widthOrderbook * 2 * "*")
+        
         for sellOrder in sorted(order.activeSellOrders[self.id], key = operator.attrgetter("price"), reverse = True):
                 print(widthOrderbook * "." + " " + str(sellOrder))
         for buyOrder in sorted(order.activeBuyOrders[self.id], key = operator.attrgetter("price"), reverse = True):
@@ -356,66 +452,11 @@ class market():
     
     def plot(self):
         df = pd.DataFrame(transaction.historyList[self.id], columns = ["time", "price"])
+        df["volatility"] = df["price"].rolling(7).std()
+        df["volatilityTrend"] = df["volatility"].rolling(14).mean()
         return df.plot() 
     
     # Show transaction history
     def transactionHistory(self):
         for t in transaction.history[self.id]:
             print(t)
-
-###############################################################################
-# ALGORITHMIC TRADING STRATEGIES
-###############################################################################        
-# FROM HERE FOLLOW ALGORITHMIC STRATEGIES
-def alwaysBestBid(name):
-    quantity = randint(1, 10)
-    # If there are active buy orders --> improve best bid
-    if not not order.activeBuyOrders:
-        buyOrders = sorted(order.activeBuyOrders, key = operator.attrgetter("price"), reverse = True)
-        bestBid = buyOrders[0]
-        
-        # If trader is not best bid --> improve best bid
-        if not bestBid.trader == name:
-            order(name, "Buy", bestBid.price + 1, quantity)    
-        else:
-            pass
-    # Else --> create best bid    
-    else:
-        order(name, "Buy", 1, quantity)
-        
-def alwaysBestOffer(name):    
-    quantity = randint(1, 10)
-    # If there are active sell orders --> improve best offer
-    if not not order.activeSellOrders:
-        sellOrders = sorted(order.activeSellOrders, key = operator.attrgetter("price"))
-        bestOffer = sellOrders[0]
-        
-        # If trader is not best bid --> improve best bid
-        if not bestOffer.trader == name:
-            order(name, "Sell", bestOffer.price - 1, quantity)    
-        else:
-            pass
-    # Else --> create best bid    
-    else:
-        order(name, "Sell", 100, quantity)        
-        
-def priceFollowing(name):
-    # If transaction --> check for trend
-    if len(transaction.history) >= 2:
-        lastPrice = transaction.history[-1].price
-        secondLastPrice = transaction.history[-2].price
-        quantity = randint(1, 10)
-        
-        # If price up --> buy best offer
-        if lastPrice > secondLastPrice:
-            if not not order.activeSellOrders:
-                #sellOrders = sorted(order.activeSellOrders, key = operator.attrgetter("price"))
-                #bestOffer = sellOrders[0]
-                order(name, "Buy", 100, quantity)
-        
-    # If price down --> hit best bid    
-        if lastPrice < secondLastPrice:
-            if not not order.activeBuyOrders:
-                #buyOrders = sorted(order.activeBuyOrders, key = operator.attrgetter("price"), reverse = True)
-                #bestBid = buyOrders[0]
-                order(name, "Sell", 1, quantity)        
