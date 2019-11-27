@@ -22,6 +22,7 @@ a = market()
 b = market()
 
 c = market()
+
 ...
 
 Step 3: 
